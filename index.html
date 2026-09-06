@@ -57,7 +57,7 @@ const DEFAULT_DRIVERS=['Dana','Mike','Keenan','Jacob','Martin','Morgan','Nancy']
 const DEFAULT_FIELDS=['Field 1','Field 2',"Adler's — Field 3",'Field 4','Field 5','Field 7','Field 8','Stragies — Field 9',"Gar's — Field 11",'Field 10',"Betty's — Field 15","Cussy's — Field 20",'Field 23','North Delno — Field 24','South Delno — Field 25','Field 26','Field 27','Field 28','Field 29','Field 30','Field 31','Field 32','Field 33','Field 34',"Dana's — Field 36",'Cold Springs #1','Cold Springs #2','Cold Springs #3','Cold Springs #4',"Darren's Home","Deb's Alfalfa","Deb's Corn",'Germantown 3','Germantown 4','Germantown 6 South','Germantown 6 North','Germantown 9','Germantown 30','Germantown 31 North','Germantown 31 South','Lura 12 North','Lura 12 South'];
 const DESTINATIONS=['POET – Big Stone','WesCon – Twin Brooks','Feed – Feedlot','Other'];
 const DEFAULT_OWNERS=['Granite View Farms','Dana Johnson'];
-const DEFAULT_FIELD_OWNERS=Object.fromEntries(DEFAULT_fieldList().map(f=>[f,f.startsWith('Lura 12')?'Dana Johnson':'Granite View Farms']));
+const DEFAULT_FIELD_OWNERS=Object.fromEntries(DEFAULT_FIELDS.map(f=>[f,f.startsWith('Lura 12')?'Dana Johnson':'Granite View Farms']));
 const NAV=[['scale','⚖️','Scale / Tare'],['dumping','🌽','Dumping Pits'],['dryer','🏭','Dryer / Bins'],['combine','🚜','Combine View'],['loadout','🚛','Elevator Delivery'],['reports','📊','Fields / Reports'],['settings','⚙️','Settings / Demo']];
 function defaultState(){
   const yesterday=new Date(Date.now()-86400000).toISOString();
