@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="GVF Harvest">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.png">
-<meta name="gvf-live-version" content="live-beta-1-6-2-wi127-buffer-fix">
+<meta name="gvf-live-version" content="live-beta-1-6-3-serial-recovery">
 <title>Granite View Farms Harvest</title>
 <style>
 :root{--maroon:#65121f;--maroon2:#7c1a2a;--gold:#d3a52f;--cream:#f5f0e5;--paper:#fffdf8;--ink:#1d232a;--muted:#6f7780;--line:#ded7ca;--green:#1c7b43;--red:#bb2f2f;--amber:#9a6710;--nav:#171b20;--shadow:0 10px 30px #2c1a120f}
@@ -98,7 +98,7 @@ main{padding:24px 26px 40px;max-width:1560px;width:100%;margin:0 auto}
 </head>
 <body>
 <div id="activate" class="activation hidden"><div class="box"><div class="biglogo">GVF</div><h1>GVF Harvest</h1><p>Activate this farm device once. Daily harvest use stays signed in on this device.</p><div class="field"><label>Device name</label><input id="actName" placeholder="e.g. Bin Shack iPad"></div><div class="field" style="margin-top:10px"><label>Device setup code</label><input id="actCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code"></div><button class="btn gold big" id="actBtn" style="width:100%;margin-top:14px">ACTIVATE DEVICE</button><div id="actErr" class="small" style="color:var(--red);margin-top:10px;text-align:center"></div></div></div>
-<header class="top"><div class="logo">GVF</div><div class="brand"><b>Granite View Farms Harvest</b><small>GVF HARVEST • LIVE BETA 1.6.2</small></div><div class="topright"><div class="net"><span id="netDot" class="dot"></span><span id="netText">Online</span></div><div id="yearTop">Crop Year —</div></div></header>
+<header class="top"><div class="logo">GVF</div><div class="brand"><b>Granite View Farms Harvest</b><small>GVF HARVEST • LIVE BETA 1.6.3</small></div><div class="topright"><div class="net"><span id="netDot" class="dot"></span><span id="netText">Online</span></div><div id="yearTop">Crop Year —</div></div></header>
 <div id="offline" class="offline">⚠️ OFFLINE — changes are protected on this device and will retry when connection returns.</div>
 <div class="shell"><nav id="nav"></nav><main>
 <section id="dashboard" class="view active"></section>
@@ -180,20 +180,37 @@ function handleScaleChunk(text){
   if(serialBuffer.length>120){parseScaleLine(serialBuffer);serialBuffer=serialBuffer.slice(-60)}
 }
 async function readScaleSerial(){
-  if(!serialPort?.readable)return;serialReading=true;const decoder=new TextDecoder();
-  try{
-    serialReader=serialPort.readable.getReader();
-    while(serialReading){const {value,done}=await serialReader.read();if(done)break;if(value){const clean=new Uint8Array(value.length);for(let i=0;i<value.length;i++)clean[i]=value[i]&0x7F;handleScaleChunk(decoder.decode(clean,{stream:true}))}}
-  }catch(e){if(serialReading){serialStatus='ERROR';serialStatusNote='Scale serial connection stopped: '+(e?.message||'serial error');toast('⚠️ '+esc(serialStatusNote),5200)}}
-  finally{try{serialReader?.releaseLock()}catch{}serialReader=null;if(serialReading){serialConnected=false;serialReading=false;serialStableWeight=null;updateScaleSerialUi()}}
+  if(!serialPort)return;serialReading=true;const decoder=new TextDecoder();
+  let recoveryCount=0,recoveryWindow=Date.now();
+  while(serialReading&&serialPort){
+    if(!serialPort.readable)break;
+    let reader=null;
+    try{
+      reader=serialPort.readable.getReader();serialReader=reader;
+      while(serialReading){
+        const {value,done}=await reader.read();if(done)break;
+        if(value){const clean=new Uint8Array(value.length);for(let i=0;i<value.length;i++)clean[i]=value[i]&0x7F;handleScaleChunk(decoder.decode(clean,{stream:true}))}
+      }
+    }catch(e){
+      if(!serialReading)break;
+      serialBuffer='';serialStableWeight=null;
+      const now=Date.now();if(now-recoveryWindow>10000){recoveryWindow=now;recoveryCount=0}recoveryCount++;
+      const msg=e?.message||'serial read error';serialStatus='RECOVERING';
+      serialStatusNote=recoveryCount>5?`Repeated WI-127 serial errors (${msg}) • retrying automatically; check wiring if this continues.`:`WI-127 read hiccup (${msg}) • recovering automatically…`;
+      scheduleScaleSerialUi();await new Promise(r=>setTimeout(r,Math.min(600,100*recoveryCount)));
+    }finally{
+      try{reader?.releaseLock()}catch{}if(serialReader===reader)serialReader=null;
+    }
+  }
+  if(serialReading){serialConnected=false;serialReading=false;serialStableWeight=null;serialStatus='DISCONNECTED';serialStatusNote='Scale serial stream closed. Press CONNECT SCALE to reopen it.';updateScaleSerialUi()}
 }
 async function openScalePort(port,quiet=false){
   if(!port)return false;
   try{
-    serialStatus='CONNECTING';serialStatusNote='Opening Moxa UPort compatibility mode for WI-127 9600 / 7E1…';updateScaleSerialUi();
+    serialStatus='CONNECTING';serialStatusNote='Opening Moxa UPort at WI-127 settings 9600 / 7E1…';updateScaleSerialUi();
     if(serialPort===port && (serialConnected||serialReading))return true;
-    await port.open({baudRate:9600,dataBits:8,stopBits:1,parity:'none',flowControl:'none',bufferSize:65536});
-    serialPort=port;serialConnected=true;serialReading=true;serialBuffer='';serialSamples=[];serialLiveWeight=null;serialStableWeight=null;serialStatus='LIVE';serialStatusNote='Moxa connected • WI-127 live receive • protected 64 KB serial buffer';localStorage.setItem(SERIAL_AUTH_KEY,'1');updateScaleSerialUi();
+    await port.open({baudRate:9600,dataBits:7,stopBits:1,parity:'even',flowControl:'none',bufferSize:65536});
+    serialPort=port;serialConnected=true;serialReading=true;serialBuffer='';serialSamples=[];serialLiveWeight=null;serialStableWeight=null;serialStatus='LIVE';serialStatusNote='Moxa connected • WI-127 9600 / 7E1 • automatic serial-error recovery active';localStorage.setItem(SERIAL_AUTH_KEY,'1');updateScaleSerialUi();
     if(!quiet)toast('✅ WI-127 live scale connected.');readScaleSerial();return true;
   }catch(e){
     serialPort=null;serialConnected=false;serialReading=false;serialStatus='DISCONNECTED';serialStatusNote=(e?.message||'Could not open scale serial port')+(String(e?.message||'').toLowerCase().includes('open')?' • Close PComm if it is still using COM3.':'');updateScaleSerialUi();if(!quiet)toast('⚠️ '+esc(serialStatusNote),6200);return false;
